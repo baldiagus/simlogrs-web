@@ -77,7 +77,7 @@ class MasterRekananIndex extends Component
             $query->where('status', $this->filterKategori);
         }
 
-        $items = $query->orderBy('nama')->paginate(10);
+        $items = $query->orderBy('nama')->paginate($this->perPage);
 
         $totalRekanan = Pemasok::count();
         $rekananAktif = Pemasok::where('status', 'AKTIF')->count();

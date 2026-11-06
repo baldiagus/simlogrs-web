@@ -101,6 +101,10 @@ trait HasTableFilters
      */
     public function updatedPerPage(): void
     {
+        if (! in_array($this->perPage, [10, 15, 25, 50], true)) {
+            $this->perPage = 15;
+        }
+
         $this->resetPage();
     }
 }

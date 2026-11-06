@@ -349,7 +349,7 @@ class PengembalianPeminjamanIndex extends Component
 
         $riwayatPengembalian = $historyQuery
             ->orderBy('id', 'desc')
-            ->paginate(10, ['*'], 'kembali_page');
+            ->paginate($this->perPage, ['*'], 'kembali_page');
 
         return view('livewire.aset.pengembalian-peminjaman-index', [
             'daftarPeminjaman'    => $daftarPeminjaman,

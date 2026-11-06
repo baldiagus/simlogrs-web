@@ -337,7 +337,7 @@ class PenggunaIndex extends Component
             $query->whereHas('roles', fn ($r) => $r->where('name', $this->filterRole));
         }
 
-        $users = $query->orderBy('nama')->paginate(10);
+        $users = $query->orderBy('nama')->paginate($this->perPage);
 
         $daftarUnit = Unit::where('status', 'AKTIF')->orderBy('nama')->get();
         $daftarGudang = Gudang::where('status', 'AKTIF')->orderBy('nama')->get();
