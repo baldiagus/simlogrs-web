@@ -454,7 +454,7 @@ class DistribusiAmprahApiController extends ApiController
      */
     private function applyReadScope(Builder $query, ?User $user): Builder
     {
-        if ($this->isGlobalOperator($user)) {
+        if ($this->isGlobalOperator($user) || $this->isGlobalReader($user)) {
             return $query;
         }
 
@@ -469,11 +469,7 @@ class DistribusiAmprahApiController extends ApiController
             return $query->whereIn('gudang_id', $gudangIds);
         }
 
-        if ($unitIds || $gudangIds || ! $this->isGlobalReader($user)) {
-            return $query->whereRaw('1 = 0');
-        }
-
-        return $query;
+        return $query->whereRaw('1 = 0');
     }
 
     /**
@@ -482,7 +478,7 @@ class DistribusiAmprahApiController extends ApiController
      */
     private function canReadScoped(?User $user, ?int $unitId, ?int $gudangId): bool
     {
-        if ($this->isGlobalOperator($user)) {
+        if ($this->isGlobalOperator($user) || $this->isGlobalReader($user)) {
             return true;
         }
 
@@ -497,7 +493,7 @@ class DistribusiAmprahApiController extends ApiController
             return $gudangId && in_array((int) $gudangId, $gudangIds, true);
         }
 
-        return ! $unitIds && ! $gudangIds && $this->isGlobalReader($user);
+        return false;
     }
 
     /**

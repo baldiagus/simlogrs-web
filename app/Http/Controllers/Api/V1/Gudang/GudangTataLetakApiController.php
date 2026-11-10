@@ -12,6 +12,7 @@ use App\Models\Persediaan\StokBatch;
 use App\Models\Persediaan\StokOpname;
 use App\Models\Persediaan\StokOpnameDetail;
 use App\Services\Distribusi\DistribusiService;
+use App\Services\Distribusi\PickingScope;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -215,14 +216,18 @@ class GudangTataLetakApiController extends ApiController
         }
 
         if (! $permintaan) {
+            $ownGudangIds = PickingScope::ownGudangIds($user);
             $permintaan = PermintaanDistribusi::with(['detail.barang', 'unit'])
                 ->whereIn('status', ['DISETUJUI_GUDANG', 'DIKIRIM_SEBAGIAN', 'DISETUJUI_KARU'])
+                ->when(! PickingScope::isGlobalOperator($user), fn ($q) => $q->whereIn('gudang_id', $ownGudangIds))
                 ->latest('id')
                 ->first();
         }
 
         // Jika ada permohonan distribusi yang siap dipicking, jalankan picking FEFO
         if ($permintaan && in_array($permintaan->status, ['DISETUJUI_GUDANG', 'DIKIRIM_SEBAGIAN', 'DISETUJUI_KARU'], true)) {
+            PickingScope::authorize($user, $permintaan);
+
             return $this->eksekusiPickingResponse($request, $service, $permintaan, $user);
         }
 
@@ -237,7 +242,11 @@ class GudangTataLetakApiController extends ApiController
     private function eksekusiPickingResponse(Request $request, DistribusiService $service, PermintaanDistribusi $permintaan, $user): JsonResponse
     {
         try {
-            $gudangId = $request->input('gudang_id') ?: $permintaan->gudang_id;
+            $isGlobal = PickingScope::isGlobalOperator($user);
+            $ownGudangIds = PickingScope::ownGudangIds($user);
+            $gudangId = ($isGlobal && $request->filled('gudang_id'))
+                ? (int) $request->input('gudang_id')
+                : ($permintaan->gudang_id ?: ($user->gudang_id ?: ($ownGudangIds[0] ?? null)));
             $sppb = $service->eksekusiPickingFefo($permintaan, $user, $gudangId);
 
             $sppb->load(['detail.barang', 'detail.stokBatch', 'unit']);

@@ -86,7 +86,7 @@ class LembarKerjaPengerjaanIndex extends Component
         $isOwner = (int) $this->formSpk->teknisi_id === (int) $user?->id;
         $isSupervisor = (bool) $user?->hasRole(['super_admin', 'admin_logistik']);
         abort_unless($isOwner || $isSupervisor, 403, 'Anda hanya berhak mengisi lembar kerja untuk SPK yang ditugaskan kepada Anda.');
-
+        abort_if(in_array($this->formSpk->status, StatusSpk::riwayat(), true), 422, 'SPK berstatus ' . $this->formSpk->status . ' tidak dapat ditambahkan catatan pengerjaan.');
         $this->tanggal_pengerjaan = now()->format('Y-m-d\TH:i');
         $this->jam_mulai = now()->subHours(2)->format('H:i');
         $this->jam_selesai = now()->format('H:i');
@@ -117,6 +117,7 @@ class LembarKerjaPengerjaanIndex extends Component
         $isOwner = (int) $spk->teknisi_id === (int) $user?->id;
         $isSupervisor = (bool) $user?->hasRole(['super_admin', 'admin_logistik']);
         abort_unless($isOwner || $isSupervisor, 403, 'Anda hanya berhak mengisi lembar kerja untuk SPK yang ditugaskan kepada Anda.');
+        abort_if(in_array($spk->status, StatusSpk::riwayat(), true), 422, 'SPK berstatus ' . $spk->status . ' tidak dapat ditambahkan catatan pengerjaan.');
         $tiket = $spk->permintaanMaintenance;
 
         try {

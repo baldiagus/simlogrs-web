@@ -44,12 +44,12 @@ class PengadaanPoApiController extends ApiController
         $isGlobal = $user && (
             $user->hasRole(['super_admin', 'admin_logistik']) ||
             $user->can('view_any_pengadaan::pesanan::pembelian') ||
-            $user->can('view_any_pengadaan::penerimaan::po')
+            $user->can('view_any_gudang_stok::penerimaan::po')
         );
 
-        $hasUnitAccess = $user && ($user->unit_id || $user->hasRole(['kepala_unit', 'petugas_unit']));
+        $isUnitUser = $user && $user->hasRole(['kepala_unit', 'petugas_unit']);
 
-        if (! $isGlobal && ! $hasUnitAccess) {
+        if (! $isGlobal && (! $isUnitUser || ! $user->unit_id)) {
             return $this->jsonError('Akses ditolak: Anda tidak memiliki wewenang melihat daftar PO.', 403);
         }
         $status = $request->query('status');
@@ -70,7 +70,7 @@ class PengadaanPoApiController extends ApiController
             });
         });
 
-        if (! $isGlobal && $user->unit_id) {
+        if (! $isGlobal) {
             $query->whereHas('permintaanPengadaan', fn ($q) => $q->where('unit_id', $user->unit_id));
         }
 
@@ -118,7 +118,7 @@ class PengadaanPoApiController extends ApiController
         $hasPoAccess = $user && (
             $user->hasRole(['super_admin', 'admin_logistik']) ||
             $user->can('view_any_pengadaan::pesanan::pembelian') ||
-            $user->can('view_any_pengadaan::penerimaan::po')
+            $user->can('view_any_gudang_stok::penerimaan::po')
         );
 
         if (! $hasPoAccess) {

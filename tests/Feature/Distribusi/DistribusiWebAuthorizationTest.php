@@ -474,4 +474,22 @@ class DistribusiWebAuthorizationTest extends TestCase
         $this->assertSame(8, (int) $own->fresh()->jumlah);
         $this->assertSame(10, (int) $other->fresh()->jumlah);
     }
+
+    public function test_global_reader_with_unit_placement_can_still_read_all_units(): void
+    {
+        $reqA = $this->makePermintaan($this->unitA, $this->gudangA, 'DIAJUKAN');
+        $reqB = $this->makePermintaan($this->unitB, $this->gudangA, 'DIAJUKAN');
+
+        $auditor = $this->makeUser(['unit_id' => $this->unitA->id, 'gudang_id' => $this->gudangA->id], [
+            'view_any_layanan_unit::permintaan::barang',
+        ], 'auditor');
+
+        $this->actingAs($auditor);
+        Livewire::test(PermintaanBarangIndex::class)
+            ->assertOk()
+            ->assertSee($reqA->kode)
+            ->assertSee($reqB->kode)
+            ->call('showDetail', $reqB->id)
+            ->assertOk();
+    }
 }

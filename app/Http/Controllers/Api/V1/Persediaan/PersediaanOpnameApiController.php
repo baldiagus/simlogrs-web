@@ -27,12 +27,10 @@ class PersediaanOpnameApiController extends ApiController
     public function daftarOpname(Request $request): JsonResponse
     {
         $user = $request->user();
-        $isGlobal = $user && (
-            $user->hasRole(['super_admin', 'admin_logistik']) ||
-            $user->can('view_any_gudang_stok::stok::opname')
-        );
+        $isGlobal = $user && $user->hasRole(['super_admin', 'admin_logistik']);
+        $canView = $isGlobal || ($user && ($user->can('view_any_gudang_stok::stok::opname') || $user->can('view_gudang_stok::stok::opname')));
 
-        $hasWarehouseAccess = $isGlobal || ($user && $user->gudang_id);
+        $hasWarehouseAccess = $canView && ($isGlobal || ($user && $user->gudang_id));
         if (! $hasWarehouseAccess) {
             return $this->jsonError('Akses ditolak: Anda tidak memiliki wewenang melihat sesi stock opname.', 403);
         }
@@ -115,7 +113,7 @@ class PersediaanOpnameApiController extends ApiController
         }
 
         $gudang = Gudang::findOrFail($request->input('gudang_id'));
-        if (! $user->hasRole(['super_admin', 'admin_logistik']) && $user->gudang_id && (int) $user->gudang_id !== (int) $gudang->id) {
+        if (! $user->hasRole(['super_admin', 'admin_logistik']) && (! $user->gudang_id || (int) $user->gudang_id !== (int) $gudang->id)) {
             return $this->jsonError('Anda tidak memiliki wewenang menginisiasi opname di fasilitas gudang ini.', 403);
         }
 
@@ -184,7 +182,7 @@ class PersediaanOpnameApiController extends ApiController
             return $this->jsonError('Anda tidak memiliki wewenang menginput hasil stock opname.', 403);
         }
 
-        if (! $user->hasRole(['super_admin', 'admin_logistik']) && $user->gudang_id && (int) $user->gudang_id !== (int) $opname->gudang_id) {
+        if (! $user->hasRole(['super_admin', 'admin_logistik']) && (! $user->gudang_id || (int) $user->gudang_id !== (int) $opname->gudang_id)) {
             return $this->jsonError('Anda tidak memiliki wewenang memproses opname di fasilitas gudang ini.', 403);
         }
 

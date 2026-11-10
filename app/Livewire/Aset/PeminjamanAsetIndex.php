@@ -329,7 +329,7 @@ class PeminjamanAsetIndex extends Component
      */
     public function openDetail(int $id): void
     {
-        $this->selectedPinjam = PermintaanPeminjaman::with([
+        $pinjam = PermintaanPeminjaman::with([
             'unitPenyedia',
             'gudangPenyedia',
             'unitPeminjam',
@@ -340,6 +340,14 @@ class PeminjamanAsetIndex extends Component
             'pengembalian.pemeriksa',
         ])->findOrFail($id);
 
+        $user = auth()->user();
+        $isGlobalAdmin = $user && $user->hasRole(['super_admin', 'admin_logistik']);
+        if (! $isGlobalAdmin && ! $user?->hasRole(['auditor', 'manajemen'])) {
+            $isBorrower = $user?->unit_id && (int) $user->unit_id === (int) $pinjam->unit_id;
+            abort_unless($isBorrower || $this->dalamScopePenyedia($user, $pinjam), 403, 'Anda tidak memiliki wewenang untuk melihat peminjaman ini.');
+        }
+
+        $this->selectedPinjam = $pinjam;
         $this->showDetailModal = true;
     }
 

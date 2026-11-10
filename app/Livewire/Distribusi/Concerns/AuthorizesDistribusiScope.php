@@ -77,7 +77,7 @@ trait AuthorizesDistribusiScope
      */
     protected function applyReadScope(Builder $query, ?string $unitColumn = 'unit_id', ?string $gudangColumn = 'gudang_id'): Builder
     {
-        if ($this->isGlobalOperator()) {
+        if ($this->isGlobalOperator() || $this->isGlobalReader()) {
             return $query;
         }
 
@@ -92,11 +92,7 @@ trait AuthorizesDistribusiScope
             return $query->whereIn($gudangColumn, $gudangIds);
         }
 
-        if ($unitIds || $gudangIds || ! $this->isGlobalReader()) {
-            return $query->whereRaw('1 = 0');
-        }
-
-        return $query;
+        return $query->whereRaw('1 = 0');
     }
 
     /**
@@ -104,7 +100,7 @@ trait AuthorizesDistribusiScope
      */
     protected function canReadScoped(?int $unitId, ?int $gudangId, bool $checkUnit = true, bool $checkGudang = true): bool
     {
-        if ($this->isGlobalOperator()) {
+        if ($this->isGlobalOperator() || $this->isGlobalReader()) {
             return true;
         }
 
@@ -119,7 +115,7 @@ trait AuthorizesDistribusiScope
             return $gudangId && in_array((int) $gudangId, $gudangIds, true);
         }
 
-        return ! $unitIds && ! $gudangIds && $this->isGlobalReader();
+        return false;
     }
 
     /**

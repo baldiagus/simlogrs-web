@@ -214,4 +214,21 @@ class LembarKerjaTest extends TestCase
             ->call('saveLembarKerja')
             ->assertHasErrors(['sparepartItems.0.barang_id']);
     }
+
+    public function test_save_lembar_kerja_rejects_cancelled_or_completed_spk(): void
+    {
+        $this->actingAs($this->userTeknisi);
+        $this->spk->update(['status' => 'DIBATALKAN']);
+
+        Livewire::test(LembarKerjaPengerjaanIndex::class)
+            ->set('penugasan_id', $this->spk->id)
+            ->set('diagnosa', 'Diagnosa teknis perbaikan')
+            ->set('tindakan', 'Tindakan fisik alat')
+            ->set('hasil', 'BERHASIL')
+            ->set('uji_fungsi_kelaikan', true)
+            ->call('saveLembarKerja')
+            ->assertStatus(422);
+
+        $this->assertSame('DIBATALKAN', $this->spk->fresh()->status);
+    }
 }

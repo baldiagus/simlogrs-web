@@ -215,6 +215,9 @@ class AsetPeminjamanApprovalApiController extends ApiController
 
         $isGlobalAdmin = $user->hasRole('super_admin') || $user->hasRole('admin_logistik');
         if (! $isGlobalAdmin) {
+            if (! $user->canAny(['update_layanan_unit::approval::peminjaman', 'update_layanan_unit::peminjaman::aset'])) {
+                return $this->jsonError('Anda tidak memiliki wewenang menyerahkan fisik aset peminjaman ini.', 403);
+            }
             if ($pinjam->tipe_penyedia === 'RUANGAN' && (! $user->unit_id || (int) $user->unit_id !== (int) $pinjam->unit_penyedia_id)) {
                 return $this->jsonError('Anda tidak memiliki wewenang menyerahkan aset dari ruangan penyedia ini.', 403);
             }
@@ -269,6 +272,9 @@ class AsetPeminjamanApprovalApiController extends ApiController
         }
 
         $isGlobalAdmin = $user->hasRole('super_admin') || $user->hasRole('admin_logistik');
+        if (! $isGlobalAdmin && ! $user->canAny(['create_layanan_unit::pengembalian::aset', 'update_layanan_unit::pengembalian::aset'])) {
+            return $this->jsonError('Anda tidak memiliki izin memproses pengembalian dan inspeksi fisik aset.', 403);
+        }
         $isPenyedia = ($pinjam->tipe_penyedia === 'RUANGAN' && $user->unit_id && (int) $user->unit_id === (int) $pinjam->unit_penyedia_id)
             || ($pinjam->tipe_penyedia === 'GUDANG' && $user->gudang_id && (int) $user->gudang_id === (int) $pinjam->gudang_penyedia_id);
 

@@ -20,12 +20,10 @@ class PersediaanMonitoringApiController extends ApiController
     public function monitoringFefo(Request $request): JsonResponse
     {
         $user = $request->user();
-        $isGlobal = $user && (
-            $user->hasRole(['super_admin', 'admin_logistik']) ||
-            $user->can('view_any_gudang_stok::monitoring::fefo')
-        );
+        $isGlobal = $user && $user->hasRole(['super_admin', 'admin_logistik']);
+        $canView = $isGlobal || ($user && ($user->can('view_any_gudang_stok::monitoring::fefo') || $user->can('view_gudang_stok::monitoring::fefo')));
 
-        $hasWarehouseAccess = $isGlobal || ($user && $user->gudang_id);
+        $hasWarehouseAccess = $canView && ($isGlobal || ($user && $user->gudang_id));
         if (! $hasWarehouseAccess) {
             return $this->jsonError('Akses ditolak: Anda tidak memiliki wewenang melihat monitoring FEFO gudang.', 403);
         }
@@ -179,12 +177,10 @@ class PersediaanMonitoringApiController extends ApiController
     public function bukuMutasi(Request $request): JsonResponse
     {
         $user = $request->user();
-        $isGlobal = $user && (
-            $user->hasRole(['super_admin', 'admin_logistik']) ||
-            $user->can('view_any_gudang_stok::buku::mutasi')
-        );
+        $isGlobal = $user && $user->hasRole(['super_admin', 'admin_logistik']);
+        $canView = $isGlobal || ($user && ($user->can('view_any_gudang_stok::buku::mutasi') || $user->can('view_gudang_stok::buku::mutasi')));
 
-        $hasWarehouseAccess = $isGlobal || ($user && $user->gudang_id);
+        $hasWarehouseAccess = $canView && ($isGlobal || ($user && $user->gudang_id));
         if (! $hasWarehouseAccess) {
             return $this->jsonError('Akses ditolak: Anda tidak memiliki wewenang melihat buku mutasi gudang.', 403);
         }

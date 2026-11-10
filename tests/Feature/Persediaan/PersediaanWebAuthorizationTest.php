@@ -151,4 +151,50 @@ class PersediaanWebAuthorizationTest extends TestCase
             ->call('openCreateModal')
             ->assertSet('gudang_tujuan_id', $this->gudangB->id);
     }
+
+    public function test_persediaan_api_enforces_warehouse_scope_and_rejects_null_gudang(): void
+    {
+        $petugasA = $this->makeUser('petugas_a_api', $this->gudangA->id);
+        $petugasA->assignRole('petugas_gudang');
+
+        $resFefo = $this->actingAs($petugasA)->getJson('/api/v1/gudang/fefo/monitoring?gudang_id=' . $this->gudangB->id);
+        $resFefo->assertOk();
+        foreach ($resFefo->json('data.items') ?? [] as $item) {
+            $this->assertNotEquals($this->gudangB->nama, $item['gudang'] ?? null);
+        }
+
+        $userTanpaGudang = $this->makeUser('tanpa_gudang_api', null);
+        $userTanpaGudang->givePermissionTo(['create_gudang_stok::stok::opname', 'update_gudang_stok::otorisasi::penyesuaian']);
+
+        $this->actingAs($userTanpaGudang)
+            ->postJson('/api/v1/gudang/penyesuaian/' . $this->penyesuaianA->id . '/approve')
+            ->assertForbidden();
+    }
+
+    public function test_show_detail_opname_and_pengalihan_reject_cross_warehouse_access_and_unit_dashboard_fails_closed_on_null_unit(): void
+    {
+        $opnameA = \App\Models\Persediaan\StokOpname::create([
+            'kode' => 'OPN-TEST-' . uniqid(),
+            'gudang_id' => $this->gudangA->id,
+            'tanggal_opname' => now()->toDateString(),
+            'status' => 'BERJALAN',
+            'dibuat_oleh' => $this->makeUser('opn_creator', $this->gudangA->id)->id,
+        ]);
+
+        $petugasB = $this->makeUser('petugas_b_opn', $this->gudangB->id);
+        $petugasB->givePermissionTo('view_any_gudang_stok::stok::opname');
+
+        $this->actingAs($petugasB);
+        Livewire::test(\App\Livewire\Persediaan\StockOpnameIndex::class)
+            ->call('showDetail', $opnameA->id)
+            ->assertForbidden();
+
+        $unitUserNoUnit = $this->makeUser('unit_no_tenant', null);
+        $unitUserNoUnit->givePermissionTo('page_UnitDashboard');
+
+        $this->actingAs($unitUserNoUnit);
+        Livewire::test(\App\Livewire\Dashboard\UnitDashboard::class)
+            ->assertViewHas('totalAntreanRcv', 0)
+            ->assertViewHas('totalAmprahBerjalan', 0);
+    }
 }

@@ -37,14 +37,12 @@ class ApprovalController extends ApiController
     private function antreanPr($user)
     {
         $isCrossUnitViewer = $user && (
-            $user->hasRole(['super_admin', 'admin_logistik']) ||
-            $user->can('view_any_pengadaan::permintaan::pengadaan') ||
-            $user->can('view_any_layanan_unit::approval::karu') ||
-            $user->can('view_any_gudang_stok::distribusi::approval')
+            $user->hasRole(['super_admin', 'admin_logistik', 'auditor', 'manajemen']) ||
+            $user->hasRole('pengadaan')
         );
 
         $isPengadaanOnly = $user && $user->hasRole('pengadaan') && ! $user->hasRole(['super_admin', 'admin_logistik']);
-        $isAdminOrAudit = $user && ($user->hasRole(['super_admin', 'admin_logistik']) || $user->can('view_any_pengadaan::permintaan::pengadaan'));
+        $isAdminOrAudit = $user && $user->hasRole(['super_admin', 'admin_logistik', 'auditor', 'manajemen']);
 
         $prStatuses = [StatusPermintaanPengadaan::Diajukan->value];
         if ($isPengadaanOnly) {

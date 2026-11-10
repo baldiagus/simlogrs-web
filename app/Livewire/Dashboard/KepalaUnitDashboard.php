@@ -19,38 +19,37 @@ class KepalaUnitDashboard extends Component
     {
         abort_unless(auth()->user()?->can('page_KepalaUnitDashboard'), 403);
 
-        $unitId = auth()->user()?->unit_id;
+        $user = auth()->user();
+        $isGlobal = (bool) $user?->hasRole(['super_admin', 'admin_logistik']);
+        $unitId = $user?->unit_id;
+        $scopeUnit = fn ($q, string $col = 'unit_id') => $unitId
+            ? $q->where($col, $unitId)
+            : ($isGlobal ? $q : $q->whereRaw('1 = 0'));
 
         // 1. Antrean Approval Amprah Karu (Meja 1)
-        $antreanAmprah = PermintaanDistribusi::where('status', StatusPermintaanDistribusi::Diajukan->value)
-            ->when($unitId, fn($q) => $q->where('unit_id', $unitId))
+        $antreanAmprah = $scopeUnit(PermintaanDistribusi::where('status', StatusPermintaanDistribusi::Diajukan->value))
             ->with(['pengaju', 'gudang', 'detail.barang'])
             ->latest('id')
             ->take(5)
             ->get();
-        $totalAntreanAmprah = PermintaanDistribusi::where('status', StatusPermintaanDistribusi::Diajukan->value)
-            ->when($unitId, fn($q) => $q->where('unit_id', $unitId))
+        $totalAntreanAmprah = $scopeUnit(PermintaanDistribusi::where('status', StatusPermintaanDistribusi::Diajukan->value))
             ->count();
 
         // 2. Permohonan Pinjam Aset Menunggu Izin Karu Penyedia
-        $antreanPinjam = PermintaanPeminjaman::where('status', 'DIAJUKAN')
-            ->when($unitId, fn($q) => $q->where('unit_penyedia_id', $unitId))
+        $antreanPinjam = $scopeUnit(PermintaanPeminjaman::where('status', 'DIAJUKAN'), 'unit_penyedia_id')
             ->with(['unitPeminjam', 'pengaju'])
             ->latest('id')
             ->take(5)
             ->get();
-        $totalAntreanPinjam = PermintaanPeminjaman::where('status', 'DIAJUKAN')
-            ->when($unitId, fn($q) => $q->where('unit_penyedia_id', $unitId))
+        $totalAntreanPinjam = $scopeUnit(PermintaanPeminjaman::where('status', 'DIAJUKAN'), 'unit_penyedia_id')
             ->count();
 
         // 3. Tiket Lapor Servis / Kerusakan Aktif di Ruangan
-        $totalServisAktif = PermintaanMaintenance::whereIn('status', StatusMaintenance::aktif())
-            ->when($unitId, fn($q) => $q->where('unit_id', $unitId))
+        $totalServisAktif = $scopeUnit(PermintaanMaintenance::whereIn('status', StatusMaintenance::aktif()))
             ->count();
 
         // 4. Komoditas Stok Ruangan Terdaftar
-        $totalStokRuangan = StokRuangan::when($unitId, fn($q) => $q->where('unit_id', $unitId))->count();
-
+        $totalStokRuangan = $scopeUnit(StokRuangan::query())->count();
         return view('livewire.dashboard.kepala-unit-dashboard', [
             'totalAntreanAmprah' => $totalAntreanAmprah,
             'antreanAmprah'      => $antreanAmprah,

@@ -17,8 +17,18 @@ class IpsrsRekamMedisApiController extends ApiController
      * 3. Rekam Medis Aset Fisik (Comprehensive Life-Cycle History)
      * GET /v1/maintenance/rekam-medis/{aset_id}
      */
-    public function rekamMedisAset(int $asetId): JsonResponse
+    public function rekamMedisAset(Request $request, int $asetId): JsonResponse
     {
+        $user = $request->user();
+        $canView = $user && (
+            $user->hasRole(['super_admin', 'admin_logistik', 'kepala_teknisi', 'teknisi', 'auditor', 'manajemen']) ||
+            $user->can('view_any_pemeliharaan::rekam::medis::aset') ||
+            $user->can('view_pemeliharaan::rekam::medis::aset')
+        );
+        if (! $canView) {
+            return $this->jsonError('Anda tidak memiliki wewenang melihat rekam medis aset.', 403);
+        }
+
         $aset = Aset::with([
             'barang.kategori',
             'barang.satuan',
@@ -120,9 +130,18 @@ class IpsrsRekamMedisApiController extends ApiController
      */
     public function katalogRekamMedis(Request $request): JsonResponse
     {
+        $user = $request->user();
+        $canView = $user && (
+            $user->hasRole(['super_admin', 'admin_logistik', 'kepala_teknisi', 'teknisi', 'auditor', 'manajemen']) ||
+            $user->can('view_any_pemeliharaan::rekam::medis::aset') ||
+            $user->can('view_pemeliharaan::rekam::medis::aset')
+        );
+        if (! $canView) {
+            return $this->jsonError('Anda tidak memiliki wewenang melihat katalog rekam medis aset.', 403);
+        }
+
         $cari = $request->query('cari');
         $kondisi = $request->query('kondisi');
-
         $query = Aset::with(['barang.kategori', 'barang.merek', 'unit', 'gudang'])
             ->withCount('permintaanMaintenance')
             ->when($kondisi, fn ($q) => $q->where('kondisi', $kondisi))

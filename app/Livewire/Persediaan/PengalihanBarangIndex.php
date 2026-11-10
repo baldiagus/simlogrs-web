@@ -231,12 +231,23 @@ class PengalihanBarangIndex extends Component
      */
     public function showDetail(int $id): void
     {
-        $this->selectedTransfer = PengalihanBarang::with([
+        $transfer = PengalihanBarang::with([
             'gudangAsal', 'unitAsal', 'gudangTujuan', 'unitTujuan', 'lokasiGudangTujuan',
             'pengaju', 'penyetuju', 'penerima',
             'detail.barang.satuan', 'detail.stokBatch',
         ])->findOrFail($id);
 
+        $user = auth()->user();
+        $isGlobalAdmin = (bool) ($user && $user->hasRole(['super_admin', 'admin_logistik', 'auditor', 'manajemen']));
+        if (! $isGlobalAdmin) {
+            $inOrigin = ($transfer->tipe_asal === 'GUDANG' && $user?->gudang_id && (int) $user->gudang_id === (int) $transfer->gudang_asal_id)
+                || ($transfer->tipe_asal === 'RUANGAN' && $user?->unit_id && (int) $user->unit_id === (int) $transfer->unit_asal_id);
+            $inDestination = ($transfer->tipe_tujuan === 'GUDANG' && $user?->gudang_id && (int) $user->gudang_id === (int) $transfer->gudang_tujuan_id)
+                || ($transfer->tipe_tujuan === 'RUANGAN' && $user?->unit_id && (int) $user->unit_id === (int) $transfer->unit_tujuan_id);
+            abort_unless($inOrigin || $inDestination, 403, 'Anda tidak memiliki wewenang melihat detail pengalihan barang ini.');
+        }
+
+        $this->selectedTransfer = $transfer;
         $this->showDetailModal = true;
     }
 

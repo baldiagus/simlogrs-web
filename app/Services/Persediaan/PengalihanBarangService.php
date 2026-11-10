@@ -119,6 +119,9 @@ class PengalihanBarangService
             }
             // Kunci stok batch dengan memotong langsung
             $batch->decrement('jumlah', $jumlah);
+            if ($batch->jumlah <= 0) {
+                $batch->update(['status' => 'HABIS']);
+            }
 
             return;
         }
@@ -178,7 +181,13 @@ class PengalihanBarangService
             // Kembalikan stok ke lokasi asal
             foreach ($transfer->detail as $item) {
                 if ($transfer->tipe_asal === 'GUDANG' && $item->stok_batch_id) {
-                    StokBatch::where('id', $item->stok_batch_id)->increment('jumlah', $item->jumlah);
+                    $batch = StokBatch::lockForUpdate()->find($item->stok_batch_id);
+                    if ($batch) {
+                        $batch->increment('jumlah', $item->jumlah);
+                        if ($batch->status === 'HABIS' && $batch->jumlah > 0) {
+                            $batch->update(['status' => 'AKTIF']);
+                        }
+                    }
                 } elseif ($transfer->tipe_asal === 'RUANGAN') {
                     $stok = StokRuangan::firstOrCreate(
                         ['unit_id' => $transfer->unit_asal_id, 'barang_id' => $item->barang_id],
@@ -213,7 +222,13 @@ class PengalihanBarangService
             // Kembalikan stok
             foreach ($transfer->detail as $item) {
                 if ($transfer->tipe_asal === 'GUDANG' && $item->stok_batch_id) {
-                    StokBatch::where('id', $item->stok_batch_id)->increment('jumlah', $item->jumlah);
+                    $batch = StokBatch::lockForUpdate()->find($item->stok_batch_id);
+                    if ($batch) {
+                        $batch->increment('jumlah', $item->jumlah);
+                        if ($batch->status === 'HABIS' && $batch->jumlah > 0) {
+                            $batch->update(['status' => 'AKTIF']);
+                        }
+                    }
                 } elseif ($transfer->tipe_asal === 'RUANGAN') {
                     $stok = StokRuangan::firstOrCreate(
                         ['unit_id' => $transfer->unit_asal_id, 'barang_id' => $item->barang_id],
@@ -311,6 +326,9 @@ class PengalihanBarangService
 
         $saldoSebelum = $batchTujuan->jumlah;
         $batchTujuan->increment('jumlah', $item->jumlah);
+        if ($batchTujuan->status === 'HABIS' && $batchTujuan->jumlah > 0) {
+            $batchTujuan->update(['status' => 'AKTIF']);
+        }
 
         PergerakanStok::create([
             'barang_id' => $item->barang_id,

@@ -158,10 +158,15 @@ class PesananPembelianIndex extends Component
         ]);
 
         $sudahAdaPo = false;
-        DB::transaction(function () use (&$sudahAdaPo) {
+        $statusPrTidakValid = false;
+        DB::transaction(function () use (&$sudahAdaPo, &$statusPrTidakValid) {
             // Kunci baris PR lalu cek ulang di dalam transaksi: dua penerbitan bersamaan tidak boleh sama-sama lolos.
             if ($this->prId) {
-                PermintaanPengadaan::lockForUpdate()->find($this->prId);
+                $pr = PermintaanPengadaan::lockForUpdate()->find($this->prId);
+                if (! $pr || $pr->status !== StatusPermintaanPengadaan::DiteruskanKePengadaan->value) {
+                    $statusPrTidakValid = true;
+                    return;
+                }
                 $sudahAdaPo = PesananPembelian::where('permintaan_pengadaan_id', $this->prId)
                     ->where('status', '!=', StatusPesananPembelian::Dibatalkan->value)
                     ->exists();
@@ -169,7 +174,6 @@ class PesananPembelianIndex extends Component
                     return;
                 }
             }
-
             $totalBiaya = collect($this->itemRows)->sum(fn ($r) => (int) $r['jumlah'] * (float) $r['harga_satuan']);
 
             $po = PesananPembelian::create([
@@ -201,6 +205,11 @@ class PesananPembelianIndex extends Component
                 ]);
             }
         });
+
+        if ($statusPrTidakValid) {
+            $this->toast('Hanya Permintaan Pengadaan berstatus DITERUSKAN KE PENGADAAN yang dapat diterbitkan menjadi PO.', 'danger');
+            return;
+        }
 
         if ($sudahAdaPo) {
             $this->toast('Permintaan Pengadaan ini sudah pernah diterbitkan menjadi Pesanan Pembelian (PO).', 'danger');

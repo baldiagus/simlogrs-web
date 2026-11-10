@@ -141,9 +141,13 @@ class DistribusiPengirimanApiController extends ApiController
         $isGlobalAdmin = $user->hasRole('super_admin') || $user->hasRole('admin_logistik');
         $userUnitId = $user->unit_id;
 
+        if (! $isGlobalAdmin && ! $userUnitId) {
+            return $this->jsonSuccess([], 'Daftar pengiriman barang menuju ruangan berhasil dimuat.');
+        }
+
         $sppbs = PengirimanBarang::query()
             ->where('status', StatusPengirimanBarang::Dikirim->value)
-            ->when($userUnitId && ! $isGlobalAdmin, fn ($q) => $q->where('unit_id', $userUnitId))
+            ->when(! $isGlobalAdmin, fn ($q) => $q->where('unit_id', $userUnitId))
             ->with(['gudang:id,kode,nama', 'unit:id,kode,nama', 'pengirim:id,nama', 'detail.barang.satuan', 'detail.stokBatch'])
             ->latest('id')
             ->get()

@@ -36,7 +36,12 @@ class PersediaanPenyesuaianApiController extends ApiController
             return $this->jsonError('Anda tidak memiliki wewenang melihat daftar otorisasi penyesuaian stok.', 403);
         }
         $status = $request->query('status', StatusPenyesuaianStok::Menunggu->value);
-        $gudangId = $request->query('gudang_id');
+        $isGlobal = $user && $user->hasRole(['super_admin', 'admin_logistik']);
+        $gudangId = $isGlobal ? $request->query('gudang_id') : $user->gudang_id;
+
+        if (! $isGlobal && ! $gudangId) {
+            return $this->jsonError('Anda tidak memiliki wewenang melihat daftar otorisasi penyesuaian stok.', 403);
+        }
 
         $query = PenyesuaianStok::with([
             'stokOpname:id,kode,tanggal_opname',
@@ -48,7 +53,6 @@ class PersediaanPenyesuaianApiController extends ApiController
         ])
         ->when($status && $status !== 'SEMUA', fn ($q) => $q->where('status', $status))
         ->when($gudangId, fn ($q) => $q->where('gudang_id', $gudangId));
-
         $items = $query->orderBy('id', 'desc')->limit(50)->get()->map(function ($adj) {
             $totalNilai = (float) $adj->detail->sum('subtotal_nilai');
 
@@ -106,7 +110,7 @@ class PersediaanPenyesuaianApiController extends ApiController
             return $this->jsonError('Anda tidak memiliki wewenang untuk mengesahkan penyesuaian stok.', 403);
         }
 
-        if (! $user->hasRole(['super_admin', 'admin_logistik']) && $user->gudang_id && (int) $user->gudang_id !== (int) $adj->gudang_id) {
+        if (! $user->hasRole(['super_admin', 'admin_logistik']) && (! $user->gudang_id || (int) $user->gudang_id !== (int) $adj->gudang_id)) {
             return $this->jsonError('Anda tidak memiliki wewenang mengesahkan penyesuaian stok untuk fasilitas gudang ini.', 403);
         }
 
@@ -210,7 +214,7 @@ class PersediaanPenyesuaianApiController extends ApiController
             return $this->jsonError('Anda tidak memiliki wewenang untuk menolak otorisasi penyesuaian stok.', 403);
         }
 
-        if (! $user->hasRole(['super_admin', 'admin_logistik']) && $user->gudang_id && (int) $user->gudang_id !== (int) $adj->gudang_id) {
+        if (! $user->hasRole(['super_admin', 'admin_logistik']) && (! $user->gudang_id || (int) $user->gudang_id !== (int) $adj->gudang_id)) {
             return $this->jsonError('Anda tidak memiliki wewenang menolak penyesuaian stok untuk fasilitas gudang ini.', 403);
         }
 

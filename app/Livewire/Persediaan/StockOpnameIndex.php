@@ -71,7 +71,21 @@ class StockOpnameIndex extends Component
      */
     public function exportExcel(int $opnameId)
     {
+        abort_unless(
+            auth()->user()?->can('view_any_gudang_stok::stok::opname') ||
+            auth()->user()?->can('view_gudang_stok::stok::opname'),
+            403
+        );
+
         $opname = StokOpname::with(['gudang', 'detail.barang.satuan', 'detail.stokBatch.lokasiGudang'])->findOrFail($opnameId);
+
+        $user = auth()->user();
+        $isGlobalAdmin = $user && $user->hasRole(['super_admin', 'admin_logistik']);
+        abort_unless(
+            $isGlobalAdmin || ($user?->gudang_id && (int) $user->gudang_id === (int) $opname->gudang_id),
+            403,
+            'Anda tidak memiliki wewenang mengunduh data opname gudang lain.'
+        );
 
         $rows = $opname->detail->map(fn ($d) => [
             'ID_Detail'     => $d->id,
@@ -154,7 +168,13 @@ class StockOpnameIndex extends Component
      */
     public function showDetail(int $opnameId): void
     {
-        $this->selectedOpname = StokOpname::with([
+        abort_unless(
+            auth()->user()?->can('view_any_gudang_stok::stok::opname') ||
+            auth()->user()?->can('view_gudang_stok::stok::opname'),
+            403
+        );
+
+        $opname = StokOpname::with([
             'gudang',
             'pembuat',
             'penyetuju',
@@ -163,6 +183,15 @@ class StockOpnameIndex extends Component
             'penyesuaian',
         ])->findOrFail($opnameId);
 
+        $user = auth()->user();
+        $isGlobalAdmin = $user && $user->hasRole(['super_admin', 'admin_logistik', 'auditor', 'manajemen']);
+        abort_unless(
+            $isGlobalAdmin || ($user?->gudang_id && (int) $user->gudang_id === (int) $opname->gudang_id),
+            403,
+            'Anda tidak memiliki wewenang melihat detail opname gudang lain.'
+        );
+
+        $this->selectedOpname = $opname;
         $this->showDetailModal = true;
     }
 

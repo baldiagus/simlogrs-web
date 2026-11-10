@@ -362,4 +362,64 @@ class DistribusiBackorderTest extends TestCase
         $req->refresh();
         $this->assertEquals('SEDANG_DIKIRIM', $req->status);
     }
+
+    public function test_duplicate_barang_lines_in_permintaan_supports_partial_backorder_and_single_batch_allocation(): void
+    {
+        $req = PermintaanDistribusi::create([
+            'kode' => CodeGenerator::generate('REQ', PermintaanDistribusi::class, 'kode', 'Ym', 3),
+            'unit_id' => $this->unit->id,
+            'gudang_id' => $this->gudang->id,
+            'diajukan_oleh' => $this->userAdmin->id,
+            'disetujui_oleh' => $this->userAdmin->id,
+            'tanggal_permintaan' => now()->toDateString(),
+            'urgensi' => 'REGULER',
+            'status' => 'DISETUJUI_GUDANG',
+        ]);
+
+        PermintaanDistribusiDetail::create([
+            'permintaan_distribusi_id' => $req->id,
+            'barang_id' => $this->barang->id,
+            'jumlah' => 5,
+            'jumlah_disetujui' => 5,
+        ]);
+        PermintaanDistribusiDetail::create([
+            'permintaan_distribusi_id' => $req->id,
+            'barang_id' => $this->barang->id,
+            'jumlah' => 5,
+            'jumlah_disetujui' => 5,
+        ]);
+
+        StokBatch::create([
+            'barang_id' => $this->barang->id,
+            'gudang_id' => $this->gudang->id,
+            'lokasi_gudang_id' => $this->lokasi->id,
+            'nomor_batch' => 'BATCH-DUP-01',
+            'tanggal_kedaluwarsa' => now()->addYear()->toDateString(),
+            'jumlah' => 5,
+            'status' => 'AKTIF',
+        ]);
+
+        $service = app(DistribusiService::class);
+        $sppb1 = $service->eksekusiPickingFefo($req, $this->userAdmin, $this->gudang->id);
+
+        $req->refresh();
+        $this->assertEquals('DIKIRIM_SEBAGIAN', $req->status);
+        $this->assertEquals(5, $sppb1->detail->sum('jumlah_dikirim'));
+
+        StokBatch::create([
+            'barang_id' => $this->barang->id,
+            'gudang_id' => $this->gudang->id,
+            'lokasi_gudang_id' => $this->lokasi->id,
+            'nomor_batch' => 'BATCH-DUP-02',
+            'tanggal_kedaluwarsa' => now()->addYears(2)->toDateString(),
+            'jumlah' => 10,
+            'status' => 'AKTIF',
+        ]);
+
+        $sppb2 = $service->eksekusiPickingFefo($req, $this->userAdmin, $this->gudang->id);
+
+        $req->refresh();
+        $this->assertEquals('SEDANG_DIKIRIM', $req->status);
+        $this->assertEquals(5, $sppb2->detail->sum('jumlah_dikirim'));
+    }
 }

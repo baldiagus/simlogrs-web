@@ -31,6 +31,7 @@ class CodeGenerator
         // Urut panjang dulu: sebagai string 'X-999' > 'X-1000', jadi urutan leksikografis salah saat nomor melewati pad.
         $lastRecord = $modelClass::query()
             ->where($column, 'like', "{$searchPrefix}%")
+            ->whereRaw("{$column} ~ ?", ["^{$searchPrefix}[0-9]+$"])
             ->orderByRaw("length({$column}) desc")
             ->orderBy($column, 'desc')
             ->value($column);

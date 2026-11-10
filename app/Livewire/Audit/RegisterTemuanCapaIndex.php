@@ -205,6 +205,11 @@ class RegisterTemuanCapaIndex extends Component
             403,
             'Anda tidak memiliki wewenang mengelola tindak lanjut temuan audit unit ini.'
         );
+        abort_if(
+            $temuan->status_capa === StatusCapa::Closed->value,
+            403,
+            'Temuan audit telah ditutup resmi (Closed) dan tidak dapat dimodifikasi.'
+        );
     }
 
     /**

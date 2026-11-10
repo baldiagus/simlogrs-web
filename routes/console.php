@@ -306,6 +306,7 @@ Artisan::command('simlog:generate-preventive-maintenance', function () {
     $jadwals = JadwalMaintenance::with(['aset.barang', 'teknisi'])
         ->where('status', 'AKTIF')
         ->where('tanggal_berikutnya', '<=', $today)
+        ->whereHas('aset', fn ($q) => $q->whereIn('status', ['TERSEDIA', 'DIGUNAKAN']))
         ->get();
 
     $defaultUser = User::where('email', 'teknisi@simlogrs.local')->first() ?? User::first();

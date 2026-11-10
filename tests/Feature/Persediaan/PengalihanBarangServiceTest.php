@@ -204,4 +204,46 @@ class PengalihanBarangServiceTest extends TestCase
         $this->assertNotNull($batchTujuan);
         $this->assertEquals(25, $batchTujuan->jumlah);
     }
+
+    public function test_transfer_to_or_restore_of_depleted_habis_batch_reactivates_status_to_aktif(): void
+    {
+        $service = app(PengalihanBarangService::class);
+
+        $batchHabisTujuan = StokBatch::create([
+            'barang_id' => $this->barangBhp->id,
+            'gudang_id' => $this->gudangTujuan->id,
+            'nomor_batch' => $this->batchAsal->nomor_batch,
+            'tanggal_kedaluwarsa' => $this->batchAsal->tanggal_kedaluwarsa,
+            'jumlah' => 0,
+            'status' => 'HABIS',
+        ]);
+
+        $transfer = $service->ajukanPengalihan([
+            'tipe_asal' => 'GUDANG',
+            'gudang_asal_id' => $this->gudangAsal->id,
+            'tipe_tujuan' => 'GUDANG',
+            'gudang_tujuan_id' => $this->gudangTujuan->id,
+            'tanggal_pengalihan' => now()->toDateString(),
+            'alasan' => 'Reaktivasi batch habis',
+            'diajukan_oleh' => $this->userPetugas->id,
+            'items' => [
+                [
+                    'barang_id' => $this->barangBhp->id,
+                    'stok_batch_id' => $this->batchAsal->id,
+                    'jumlah' => 100,
+                ],
+            ],
+        ]);
+
+        $this->batchAsal->refresh();
+        $this->assertEquals(0, $this->batchAsal->jumlah);
+        $this->assertEquals('HABIS', $this->batchAsal->status);
+
+        $service->setujuiPengalihan($transfer->id, $this->userKepalaGudang->id);
+        $service->eksekusiSerahTerima($transfer->id, $this->userPetugas->id);
+
+        $batchHabisTujuan->refresh();
+        $this->assertEquals(100, $batchHabisTujuan->jumlah);
+        $this->assertEquals('AKTIF', $batchHabisTujuan->status);
+    }
 }

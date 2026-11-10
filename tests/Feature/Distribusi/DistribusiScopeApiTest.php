@@ -253,4 +253,23 @@ class DistribusiScopeApiTest extends TestCase
             'permintaan_distribusi_id' => $permintaan->id,
         ]);
     }
+
+    public function test_scan_batch_rejects_cross_warehouse_picking_for_non_global_user(): void
+    {
+        $petugas1 = $this->makeUser([self::PERM_PICKING], [], null, $this->gudang1->id);
+        $creator = $this->makeUser([], [], $this->unit->id);
+        $permintaanGudang2 = $this->createPermintaanSiapPicking($this->gudang2->id, $this->unit->id, $creator->id);
+        $this->ensureStock($this->gudang2->id, 10);
+
+        $response = $this->actingAs($petugas1)
+            ->postJson('/api/v1/gudang/scan-batch', [
+                'permintaan_id' => $permintaanGudang2->id,
+                'gudang_id'     => $this->gudang2->id,
+            ]);
+
+        $response->assertStatus(403);
+        $this->assertDatabaseMissing('pengiriman_barang', [
+            'permintaan_distribusi_id' => $permintaanGudang2->id,
+        ]);
+    }
 }

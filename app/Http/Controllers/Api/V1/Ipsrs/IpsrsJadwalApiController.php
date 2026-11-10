@@ -28,10 +28,18 @@ class IpsrsJadwalApiController extends ApiController
     public function jadwalPreventif(Request $request): JsonResponse
     {
         $user = $request->user();
+        $canView = $user && (
+            $user->hasRole(['super_admin', 'admin_logistik', 'kepala_teknisi', 'auditor', 'manajemen'])
+            || $user->can('view_any_pemeliharaan::pemeliharaan::berkala')
+            || ($user->hasRole('teknisi') && $user->can('view_pemeliharaan::pemeliharaan::berkala'))
+        );
+        if (! $canView) {
+            return $this->jsonError('Anda tidak memiliki wewenang melihat jadwal pemeliharaan preventif.', 403);
+        }
+
         $statusFilter = strtoupper($request->query('status', 'SEMUA')); // SEMUA, OVERDUE, HARI_INI, MENDATANG
         $teknisiId = $request->query('teknisi_id');
         $cari = $request->query('cari');
-
         $today = now()->toDateString();
 
         $query = JadwalMaintenance::with([

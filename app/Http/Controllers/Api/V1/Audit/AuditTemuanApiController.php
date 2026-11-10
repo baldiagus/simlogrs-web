@@ -107,6 +107,14 @@ class AuditTemuanApiController extends ApiController
         })
         ->latest('id');
         $user = $request->user();
+        $canViewTemuan = $user && (
+            $user->hasRole(['super_admin', 'admin_logistik', 'auditor', 'manajemen']) ||
+            $user->can('view_any_audit_manajemen::temuan::capa') ||
+            $user->can('view_audit_manajemen::temuan::capa')
+        );
+        if (! $canViewTemuan) {
+            return $this->jsonError('Anda tidak memiliki wewenang untuk mengakses data temuan audit.', 403);
+        }
         // Pembaca global hanya super_admin, admin_logistik, auditor, manajemen (ADR 0001);
         // view_any_* saja tidak membuka scope lintas unit/gudang.
         $isGlobalAuditor = $user && $user->hasRole(['super_admin', 'admin_logistik', 'auditor', 'manajemen']);
@@ -238,7 +246,9 @@ class AuditTemuanApiController extends ApiController
         if (! $isTargetAuditee) {
             return $this->jsonError('Anda tidak memiliki wewenang mengirimkan tindak lanjut untuk temuan audit fasilitas/unit lain.', 403);
         }
-
+        if ($temuan->status_capa === StatusCapa::Closed->value) {
+            return $this->jsonError('Temuan audit sudah ditutup (Closed), tindak lanjut tidak dapat diubah.', 403);
+        }
         $validator = Validator::make($request->all(), [
             'analisis_penyebab'  => 'required|string|min:10',
             'tindakan_perbaikan' => 'required|string|min:10',

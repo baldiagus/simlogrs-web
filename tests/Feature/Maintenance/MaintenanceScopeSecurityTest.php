@@ -545,4 +545,49 @@ class MaintenanceScopeSecurityTest extends TestCase
             'pesan' => 'Anda hanya berhak melaporkan kerusakan untuk aset milik unit Anda atau aset yang sedang aktif dipinjam oleh unit Anda.',
         ]);
     }
+
+    public function test_spk_list_scopes_regular_technician_to_own_spk_even_with_view_any_permission(): void
+    {
+        $tek1 = User::create([
+            'nama'     => 'Teknisi 1 SPK',
+            'username' => 'tek1_spk_' . uniqid(),
+            'email'    => 'tek1_spk_' . uniqid() . '@simlog.test',
+            'password' => bcrypt('password'),
+            'status'   => 'AKTIF',
+        ]);
+        $tek1->assignRole('teknisi');
+        $tek1->givePermissionTo('view_any_pemeliharaan::spk::perbaikan');
+
+        $tek2 = User::create([
+            'nama'     => 'Teknisi 2 SPK',
+            'username' => 'tek2_spk_' . uniqid(),
+            'email'    => 'tek2_spk_' . uniqid() . '@simlog.test',
+            'password' => bcrypt('password'),
+            'status'   => 'AKTIF',
+        ]);
+        $tek2->assignRole('teknisi');
+
+        \App\Models\Ipsrs\PenugasanMaintenance::create([
+            'kode' => 'SPK-TEST-TEK1-' . uniqid(),
+            'permintaan_maintenance_id' => $this->tiketIgd->id,
+            'teknisi_id' => $tek1->id,
+            'ditugaskan_oleh' => $this->globalAdmin->id,
+            'tanggal_penugasan' => now()->toDateString(),
+            'target_selesai' => now()->addDays(2)->toDateString(),
+            'status' => 'DITUGASKAN',
+        ]);
+        $spkTek2 = \App\Models\Ipsrs\PenugasanMaintenance::create([
+            'kode' => 'SPK-TEST-TEK2-' . uniqid(),
+            'permintaan_maintenance_id' => $this->tiketOther->id,
+            'teknisi_id' => $tek2->id,
+            'ditugaskan_oleh' => $this->globalAdmin->id,
+            'tanggal_penugasan' => now()->toDateString(),
+            'target_selesai' => now()->addDays(2)->toDateString(),
+            'status' => 'DITUGASKAN',
+        ]);
+
+        $res = $this->actingAs($tek1)->getJson('/api/v1/maintenance/spk')->assertOk();
+        $kodes = collect($res->json('data.items'))->pluck('kode_spk')->all();
+        $this->assertNotContains($spkTek2->kode, $kodes);
+    }
 }

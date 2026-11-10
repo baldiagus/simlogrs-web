@@ -20,48 +20,47 @@ class UnitDashboard extends Component
     {
         abort_unless(auth()->user()?->can('page_UnitDashboard'), 403);
 
-        $unitId = auth()->user()?->unit_id;
+        $user = auth()->user();
+        $isGlobal = (bool) $user?->hasRole(['super_admin', 'admin_logistik']);
+        $unitId = $user?->unit_id;
+        $scopeUnit = fn ($q, string $col = 'unit_id') => $unitId
+            ? $q->where($col, $unitId)
+            : ($isGlobal ? $q : $q->whereRaw('1 = 0'));
 
         // 1. Pengiriman SPPB Menunggu Konfirmasi Terima (RCV)
-        $antreanRcv = PengirimanBarang::where('status', StatusPengirimanBarang::Dikirim->value)
-            ->when($unitId, fn($q) => $q->where('unit_id', $unitId))
+        $antreanRcv = $scopeUnit(PengirimanBarang::where('status', StatusPengirimanBarang::Dikirim->value))
             ->with(['gudang', 'permintaanDistribusi'])
             ->latest('id')
             ->take(5)
             ->get();
-        $totalAntreanRcv = PengirimanBarang::where('status', StatusPengirimanBarang::Dikirim->value)
-            ->when($unitId, fn($q) => $q->where('unit_id', $unitId))
+        $totalAntreanRcv = $scopeUnit(PengirimanBarang::where('status', StatusPengirimanBarang::Dikirim->value))
             ->count();
 
         // 2. Permintaan Amprah Masih Berjalan
-        $amprahBerjalan = PermintaanDistribusi::whereIn('status', [
+        $amprahBerjalan = $scopeUnit(PermintaanDistribusi::whereIn('status', [
                 StatusPermintaanDistribusi::Diajukan->value,
                 StatusPermintaanDistribusi::DisetujuiKaru->value,
                 StatusPermintaanDistribusi::DisetujuiGudang->value,
                 StatusPermintaanDistribusi::SedangDikirim->value,
-            ])
-            ->when($unitId, fn($q) => $q->where('unit_id', $unitId))
+            ]))
             ->with(['gudang', 'detail.barang'])
             ->latest('id')
             ->take(5)
             ->get();
-        $totalAmprahBerjalan = PermintaanDistribusi::whereIn('status', [
+        $totalAmprahBerjalan = $scopeUnit(PermintaanDistribusi::whereIn('status', [
                 StatusPermintaanDistribusi::Diajukan->value,
                 StatusPermintaanDistribusi::DisetujuiKaru->value,
                 StatusPermintaanDistribusi::DisetujuiGudang->value,
                 StatusPermintaanDistribusi::SedangDikirim->value,
-            ])
-            ->when($unitId, fn($q) => $q->where('unit_id', $unitId))
+            ]))
             ->count();
 
         // 3. Aset Ruangan Sedang Dipinjamkan Keluar
-        $totalAsetDipinjam = PermintaanPeminjaman::where('status', 'DISETUJUI')
-            ->when($unitId, fn($q) => $q->where('unit_penyedia_id', $unitId))
+        $totalAsetDipinjam = $scopeUnit(PermintaanPeminjaman::where('status', 'DISETUJUI'), 'unit_penyedia_id')
             ->count();
 
         // 4. Laporan Kerusakan Sarana Aktif
-        $totalLaporServis = PermintaanMaintenance::whereIn('status', StatusMaintenance::aktif())
-            ->when($unitId, fn($q) => $q->where('unit_id', $unitId))
+        $totalLaporServis = $scopeUnit(PermintaanMaintenance::whereIn('status', StatusMaintenance::aktif()))
             ->count();
 
         return view('livewire.dashboard.unit-dashboard', [

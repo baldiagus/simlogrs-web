@@ -159,4 +159,40 @@ class CapaAksesTest extends TestCase
             'berkas' => [UploadedFile::fake()->create('bukti.pdf', 50, 'application/pdf')],
         ])->assertForbidden();
     }
+
+    public function test_tindak_lanjut_api_dan_livewire_ditolak_bila_temuan_closed(): void
+    {
+        $this->temuanIgd->update(['status_capa' => 'Closed']);
+
+        Sanctum::actingAs($this->kepalaIgd);
+        $this->postJson("/api/v1/audit/temuan-capa/{$this->temuanIgd->id}/tindak-lanjut", [
+            'analisis_penyebab'  => 'Analisis penyebab minimal sepuluh karakter',
+            'tindakan_perbaikan' => 'Tindakan perbaikan minimal sepuluh karakter',
+        ])->assertForbidden();
+
+        Livewire::actingAs($this->kepalaIgd)
+            ->test(RegisterTemuanCapaIndex::class)
+            ->set('selectedTemuanId', $this->temuanIgd->id)
+            ->set('analisis_penyebab', 'Analisis penyebab minimal sepuluh karakter')
+            ->set('tindakan_perbaikan', 'Tindakan perbaikan minimal sepuluh karakter')
+            ->call('saveTindakLanjut')
+            ->assertForbidden();
+
+        $this->assertSame('Closed', $this->temuanIgd->fresh()->status_capa);
+    }
+
+    public function test_register_temuan_api_menolak_pengguna_tanpa_permission_audit_capa(): void
+    {
+        $userTanpaPermission = User::create([
+            'nama'     => 'User Tanpa Capa',
+            'username' => 'no_capa_' . uniqid(),
+            'email'    => 'no_capa_' . uniqid() . '@simlog.test',
+            'password' => bcrypt('password'),
+            'unit_id'  => $this->igd->id,
+            'status'   => 'AKTIF',
+        ]);
+
+        Sanctum::actingAs($userTanpaPermission);
+        $this->getJson('/api/v1/audit/temuan-capa')->assertForbidden();
+    }
 }

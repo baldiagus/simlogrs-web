@@ -41,17 +41,14 @@ class DistribusiService
             $alreadySentMap = $this->petaJumlahSudahDikirim($lockedPermintaan);
 
             // 1. Cek apakah masih ada sisa barang yang belum terpenuhi (terhutang)
-            $totalOwed = 0;
-            foreach ($lockedPermintaan->detail as $detail) {
-                $totalOwed += $this->hitungSisaTerhutang($detail, $alreadySentMap);
-            }
+            $sisaPerBarang = $this->hitungPetaSisaTerhutang($lockedPermintaan, $alreadySentMap);
 
-            if ($totalOwed <= 0) {
+            if (array_sum($sisaPerBarang) <= 0) {
                 throw new Exception("Seluruh komoditas pada permintaan {$lockedPermintaan->kode} sudah terpenuhi 100%.");
             }
 
             // 2. Siapkan alokasi batch FEFO untuk SPPB baru
-            $itemsToDispatch = $this->alokasiBatchFefo($lockedPermintaan, $alreadySentMap, $gudangId);
+            $itemsToDispatch = $this->alokasiBatchFefo($lockedPermintaan, $sisaPerBarang, $gudangId);
 
             if (empty($itemsToDispatch)) {
                 throw new Exception("Tidak ada saldo stok fisik tersedia di gudang saat ini. Sisa pesanan tetap terhutang dan akan dikirim saat restok.");
@@ -106,33 +103,43 @@ class DistribusiService
     }
 
     /**
-     * Hitung sisa jumlah yang masih harus dikirim untuk satu detail (disetujui dikurangi yang sudah terkirim).
+     * Hitung sisa jumlah terhutang per barang_id (kuota disetujui gabungan dikurangi yang sudah terkirim).
      */
-    private function hitungSisaTerhutang($detail, array $alreadySentMap): int
+    private function hitungPetaSisaTerhutang(PermintaanDistribusi $lockedPermintaan, array $alreadySentMap): array
     {
-        $approvedQty = $detail->jumlah_disetujui !== null ? (int) $detail->jumlah_disetujui : (int) $detail->jumlah;
-        $alreadySent = (int) ($alreadySentMap[$detail->barang_id] ?? 0);
+        $sisaMap = [];
+        $kuotaMap = [];
+        foreach ($lockedPermintaan->detail as $detail) {
+            $qty = $detail->jumlah_disetujui !== null ? (int) $detail->jumlah_disetujui : (int) $detail->jumlah;
+            $kuotaMap[$detail->barang_id] = ($kuotaMap[$detail->barang_id] ?? 0) + $qty;
+        }
+        foreach ($kuotaMap as $bId => $kuota) {
+            $sent = (int) ($alreadySentMap[$bId] ?? 0);
+            $sisaMap[$bId] = max(0, $kuota - $sent);
+        }
 
-        return max(0, $approvedQty - $alreadySent);
+        return $sisaMap;
     }
 
     /**
      * Alokasi batch FEFO (dengan lockForUpdate) untuk sisa terhutang tiap barang.
      */
-    private function alokasiBatchFefo(PermintaanDistribusi $lockedPermintaan, array $alreadySentMap, $gudangId): array
+    private function alokasiBatchFefo(PermintaanDistribusi $lockedPermintaan, array $sisaPerBarang, $gudangId): array
     {
         $itemsToDispatch = [];
 
-        // Urut barang_id agar urutan kunci StokBatch konsisten antar transaksi (cegah deadlock).
-        foreach ($lockedPermintaan->detail->sortBy('barang_id') as $detail) {
-            $owed = $this->hitungSisaTerhutang($detail, $alreadySentMap);
+        // Kelompokkan detail per barang_id dan urutkan agar urutan kunci StokBatch konsisten antar transaksi (cegah deadlock).
+        foreach ($lockedPermintaan->detail->sortBy('barang_id')->groupBy('barang_id') as $barangId => $details) {
+            $owed = (int) ($sisaPerBarang[$barangId] ?? 0);
 
             if ($owed <= 0) {
                 continue;
             }
 
+            $detail = $details->first();
+
             // Ambil stok batch aktif, urutkan berdasarkan expired date terdekat (FEFO)
-            $batches = StokBatch::where('barang_id', $detail->barang_id)
+            $batches = StokBatch::where('barang_id', $barangId)
                 ->where('gudang_id', $gudangId)
                 ->where('status', 'AKTIF')
                 ->where('jumlah', '>', 0)

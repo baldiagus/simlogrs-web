@@ -17,50 +17,47 @@ class KepalaGudangDashboard extends Component
     {
         abort_unless(auth()->user()?->can('page_KepalaGudangDashboard'), 403);
 
-        $gudangId = auth()->user()?->gudang_id;
+        $user = auth()->user();
+        $isGlobal = (bool) $user?->hasRole(['super_admin', 'admin_logistik']);
+        $gudangId = $user?->gudang_id;
+        $scopeGudang = fn ($q) => $gudangId
+            ? $q->where('gudang_id', $gudangId)
+            : ($isGlobal ? $q : $q->whereRaw('1 = 0'));
 
         // 1. Batch Kedaluwarsa Kritis (<= 90 Hari)
-        $batchKritis = StokBatch::with(['barang', 'gudang'])
+        $batchKritis = $scopeGudang(StokBatch::with(['barang', 'gudang'])
             ->where('status', 'AKTIF')
             ->whereNotNull('tanggal_kedaluwarsa')
-            ->where('tanggal_kedaluwarsa', '<=', now()->addDays(90)->toDateString())
-            ->when($gudangId, fn($q) => $q->where('gudang_id', $gudangId))
+            ->where('tanggal_kedaluwarsa', '<=', now()->addDays(90)->toDateString()))
             ->orderBy('tanggal_kedaluwarsa')
             ->take(5)
             ->get();
-        $totalBatchKritis = StokBatch::where('status', 'AKTIF')
+        $totalBatchKritis = $scopeGudang(StokBatch::where('status', 'AKTIF')
             ->whereNotNull('tanggal_kedaluwarsa')
-            ->where('tanggal_kedaluwarsa', '<=', now()->addDays(90)->toDateString())
-            ->when($gudangId, fn($q) => $q->where('gudang_id', $gudangId))
+            ->where('tanggal_kedaluwarsa', '<=', now()->addDays(90)->toDateString()))
             ->count();
 
         // 2. Sesi Stock Opname Berjalan
-        $opnameBerjalan = StokOpname::with('gudang')
-            ->whereIn('status', StatusStokOpname::aktif())
-            ->when($gudangId, fn($q) => $q->where('gudang_id', $gudangId))
+        $opnameBerjalan = $scopeGudang(StokOpname::with('gudang')
+            ->whereIn('status', StatusStokOpname::aktif()))
             ->latest('id')
             ->take(5)
             ->get();
-        $totalOpnameBerjalan = StokOpname::whereIn('status', StatusStokOpname::aktif())
-            ->when($gudangId, fn($q) => $q->where('gudang_id', $gudangId))
+        $totalOpnameBerjalan = $scopeGudang(StokOpname::whereIn('status', StatusStokOpname::aktif()))
             ->count();
 
         // 3. Menunggu Otorisasi Penyesuaian Varians Opname
-        $penyesuaianMenunggu = PenyesuaianStok::with(['gudang', 'pengaju'])
-            ->where('status', 'MENUNGGU')
-            ->when($gudangId, fn($q) => $q->where('gudang_id', $gudangId))
+        $penyesuaianMenunggu = $scopeGudang(PenyesuaianStok::with(['gudang', 'pengaju'])
+            ->where('status', 'MENUNGGU'))
             ->latest('id')
             ->take(5)
             ->get();
-        $totalPenyesuaianMenunggu = PenyesuaianStok::where('status', 'MENUNGGU')
-            ->when($gudangId, fn($q) => $q->where('gudang_id', $gudangId))
+        $totalPenyesuaianMenunggu = $scopeGudang(PenyesuaianStok::where('status', 'MENUNGGU'))
             ->count();
 
         // 4. Total Batch Aktif Terdaftar
-        $totalBatchAktif = StokBatch::where('status', 'AKTIF')
-            ->when($gudangId, fn($q) => $q->where('gudang_id', $gudangId))
+        $totalBatchAktif = $scopeGudang(StokBatch::where('status', 'AKTIF'))
             ->count();
-
         return view('livewire.dashboard.kepala-gudang-dashboard', [
             'totalBatchKritis'        => $totalBatchKritis,
             'batchKritis'             => $batchKritis,

@@ -135,4 +135,60 @@ class PesananPembelianTest extends TestCase
             ->call('savePo')
             ->assertHasErrors(['itemRows.0.jumlah']);
     }
+
+    public function test_save_po_rejects_unapproved_or_rejected_pr_and_non_numeric_custom_code_does_not_break_code_generator(): void
+    {
+        $this->actingAs($this->user);
+
+        $pr = PermintaanPengadaan::create([
+            'kode' => CodeGenerator::generatePr(),
+            'unit_id' => $this->user->unit_id ?? 1,
+            'diajukan_oleh' => $this->user->id,
+            'tanggal_permintaan' => now()->toDateString(),
+            'urgensi' => 'REGULER',
+            'status' => StatusPermintaanPengadaan::Diajukan->value,
+        ]);
+
+        Livewire::test(PesananPembelianIndex::class)
+            ->set('prId', $pr->id)
+            ->set('pemasok_id', $this->pemasok->id)
+            ->set('syarat_pembayaran', 'TEMPO_30_HARI')
+            ->set('itemRows', [
+                [
+                    'barang_id' => $this->barang->id,
+                    'nama_barang' => $this->barang->nama,
+                    'jumlah' => 10,
+                    'harga_satuan' => 50000,
+                    'subtotal' => 500000,
+                ],
+            ])
+            ->call('savePo');
+
+        $this->assertEquals(0, PesananPembelian::where('permintaan_pengadaan_id', $pr->id)->count());
+        $pr->refresh();
+        $this->assertEquals(StatusPermintaanPengadaan::Diajukan->value, $pr->status);
+
+        // Pastikan akhiran non-numerik pada kode kustom tidak mereset urutan CodeGenerator ke 001
+        $kodeStandard = CodeGenerator::generatePr();
+        PermintaanPengadaan::create([
+            'kode' => $kodeStandard,
+            'unit_id' => $this->user->unit_id ?? 1,
+            'diajukan_oleh' => $this->user->id,
+            'tanggal_permintaan' => now()->toDateString(),
+            'urgensi' => 'REGULER',
+            'status' => StatusPermintaanPengadaan::Diajukan->value,
+        ]);
+        PermintaanPengadaan::create([
+            'kode' => 'PR-' . now()->format('Y') . '-CUSTOMLONG',
+            'unit_id' => $this->user->unit_id ?? 1,
+            'diajukan_oleh' => $this->user->id,
+            'tanggal_permintaan' => now()->toDateString(),
+            'urgensi' => 'REGULER',
+            'status' => StatusPermintaanPengadaan::Diajukan->value,
+        ]);
+
+        $nextKode = CodeGenerator::generatePr();
+        $this->assertNotEquals('PR-' . now()->format('Y') . '-001', $nextKode);
+        $this->assertNotEquals($kodeStandard, $nextKode);
+    }
 }

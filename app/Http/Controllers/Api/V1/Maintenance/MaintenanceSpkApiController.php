@@ -136,9 +136,8 @@ class MaintenanceSpkApiController extends ApiController
             return $this->jsonError('Unauthenticated.', 401);
         }
 
-        $isGlobalAdmin = $user->hasRole(['super_admin', 'admin_logistik']);
-        $canViewAll = $isGlobalAdmin || $user->can('view_any_pemeliharaan::spk::perbaikan');
-        if (! $canViewAll && ! $user->can('view_pemeliharaan::spk::perbaikan') && ! $user->hasRole(['teknisi', 'kepala_teknisi'])) {
+        $canViewAll = $user->hasRole(['super_admin', 'admin_logistik', 'kepala_teknisi', 'auditor', 'manajemen']);
+        if (! $canViewAll && ! $user->can('view_any_pemeliharaan::spk::perbaikan') && ! $user->can('view_pemeliharaan::spk::perbaikan') && ! $user->hasRole(['teknisi', 'kepala_teknisi'])) {
             return $this->jsonError('Anda tidak memiliki wewenang melihat daftar SPK teknisi.', 403);
         }
 
