@@ -7,6 +7,8 @@ use App\Enums\Pengadaan\StatusPermintaanPengadaan;
 use App\Enums\Pengadaan\StatusPesananPembelian;
 use App\Http\Controllers\Api\ApiController;
 use App\Models\Master\Barang;
+use App\Models\Master\Gudang;
+use App\Models\Master\LokasiGudang;
 use App\Models\Pengadaan\PenerimaanBarang;
 use App\Models\Pengadaan\PenerimaanBarangDetail;
 use App\Models\Persediaan\PergerakanStok;
@@ -102,6 +104,11 @@ class GudangPenerimaanPoApiController extends ApiController
             return $this->jsonError('Anda tidak memiliki wewenang untuk melakukan penerimaan PO gudang.', 403);
         }
 
+        $isGlobalAdmin = $user->hasRole(['super_admin', 'admin_logistik']);
+        if (! $user->gudang_id && ! $isGlobalAdmin) {
+            return $this->jsonError('Akun Anda belum memiliki penugasan fasilitas gudang penerima resmi.', 403);
+        }
+
         $validator = $this->validatorPenerimaanPo($request);
 
         if ($validator->fails()) {
@@ -116,29 +123,11 @@ class GudangPenerimaanPoApiController extends ApiController
         if (! in_array($po->status, StatusPesananPembelian::bisaDiterima())) {
             return $this->jsonError("PO {$po->kode} belum dikirim oleh vendor atau tidak dalam status dapat diterima (saat ini: {$po->status}).", 422);
         }
-        $isGlobalAdmin = $user->hasRole('super_admin') || $user->hasRole('admin_logistik');
-        $gudangId = $user->gudang_id;
-
-        if (! $gudangId) {
-            if ($isGlobalAdmin) {
-                $firstRackId = $request->input('items')[0]['lokasi_gudang_id'] ?? null;
-                $gudangId = $request->input('gudang_id')
-                    ?? ($firstRackId ? \App\Models\Master\LokasiGudang::where('id', $firstRackId)->value('gudang_id') : null)
-                    ?? \App\Models\Master\Gudang::where('status', 'AKTIF')->value('id');
-            } else {
-                return $this->jsonError('Akun Anda belum memiliki penugasan fasilitas gudang penerima resmi.', 403);
-            }
+        $gudangId = (int) ($user->gudang_id ?? $request->input('gudang_id'));
+        if ($user->gudang_id && $request->has('gudang_id') && (int) $request->input('gudang_id') !== $gudangId) {
+            return $this->jsonError('Gudang penerima harus sesuai dengan penugasan akun Anda.', 403);
         }
 
-        if (! $gudangId) {
-            return $this->jsonError('Fasilitas gudang penerima tidak valid atau belum ditentukan.', 422);
-        }
-
-        // M-04: Validasi rak berada di dalam gudang penerima
-        $errorRak = $this->validasiRakDalamGudang($request, $gudangId);
-        if ($errorRak) {
-            return $errorRak;
-        }
         $hasReceived = false;
         foreach ($request->input('items') as $row) {
             if ((int) $row['jumlah_diterima'] > 0) {
@@ -152,6 +141,7 @@ class GudangPenerimaanPoApiController extends ApiController
         }
 
         try {
+            $this->validasiAlokasiPenerimaan($request, $gudangId);
             $penerimaan = $this->eksekusiPenerimaanPo($request, $user, $po, $gudangId);
 
             return $this->jsonSuccess([
@@ -250,6 +240,9 @@ class GudangPenerimaanPoApiController extends ApiController
                     throw ValidationException::withMessages(['items' => "Jumlah penerimaan komoditas barang melebihi sisa pesanan terkini ({$sisaTerkunci})."]);
                 }
             }
+
+            // Pertahankan urutan lock PO, lalu tahan master gudang/rak sampai seluruh stok tercatat.
+            $this->validasiAlokasiPenerimaan($request, $gudangId, true);
 
             $kodeRcv = CodeGenerator::generate('RCV', PenerimaanBarang::class, 'kode', 'Ym', 3);
 
@@ -372,6 +365,7 @@ class GudangPenerimaanPoApiController extends ApiController
     {
         return Validator::make($request->all(), [
             'pesanan_pembelian_id'              => 'required|exists:pesanan_pembelian,id',
+            'gudang_id'                        => [$request->user()->gudang_id ? 'sometimes' : 'required', 'integer'],
             'nomor_surat_jalan'                 => 'required|string|max:100',
             'catatan'                           => 'nullable|string|max:1000',
             'items'                             => 'required|array|min:1',
@@ -383,31 +377,39 @@ class GudangPenerimaanPoApiController extends ApiController
             'items.*.jumlah_rusak'              => 'nullable|integer|min:0',
         ], [
             'nomor_surat_jalan.required'        => 'Nomor surat jalan vendor wajib diisi.',
+            'gudang_id.required'                => 'Gudang penerima aktif wajib dipilih secara eksplisit.',
+            'gudang_id.integer'                 => 'Gudang penerima harus berupa ID yang valid.',
             'items.required'                    => 'Minimal satu barang harus dicatat penerimaannya.',
             'items.*.lokasi_gudang_id.required' => 'Rak penyimpanan fisik wajib dipilih.',
             'items.*.nomor_batch.required'      => 'Nomor batch barang wajib diisi.',
         ]);
     }
 
-    /**
-     * M-04: Validasi bahwa setiap lokasi_gudang_id (rak) benar-benar berada di dalam $gudangId.
-     */
-    private function validasiRakDalamGudang(Request $request, int $gudangId): ?JsonResponse
+    private function validasiAlokasiPenerimaan(Request $request, int $gudangId, bool $lock = false): void
     {
-        $itemRackIds = collect($request->input('items'))->pluck('lokasi_gudang_id')->filter()->unique()->toArray();
-        $invalidRacks = \App\Models\Master\LokasiGudang::whereIn('id', $itemRackIds)
-            ->where('gudang_id', '!=', $gudangId)
-            ->with('gudang:id,nama')
-            ->get();
-
-        if ($invalidRacks->isEmpty()) {
-            return null;
+        $gudangQuery = Gudang::whereKey($gudangId);
+        if ($lock) {
+            $gudangQuery->sharedLock();
+        }
+        $gudang = $gudangQuery->first(['id', 'status']);
+        if (! $gudang || $gudang->status !== 'AKTIF') {
+            throw ValidationException::withMessages([
+                'gudang_id' => 'Gudang penerima tidak ditemukan atau tidak aktif. Pilih gudang penerima aktif.',
+            ]);
         }
 
-        $daftarRakInvalid = $invalidRacks->map(fn ($r) => "{$r->kode} ({$r->nama}) di {$r->gudang?->nama}")->implode(', ');
-
-        return $this->jsonError("Alokasi rak tidak valid: Rak [{$daftarRakInvalid}] bukan bagian dari fasilitas gudang penerima yang ditugaskan.", 422, [
-            'lokasi_gudang_id' => ['Rak penyimpanan fisik wajib berada di dalam fasilitas gudang penerima yang sama.'],
-        ]);
+        $rackIds = collect($request->input('items'))->pluck('lokasi_gudang_id')->unique()->values();
+        $rackQuery = LokasiGudang::whereIn('id', $rackIds)->orderBy('id');
+        if ($lock) {
+            $rackQuery->sharedLock();
+        }
+        $racks = $rackQuery->get(['id', 'gudang_id', 'status']);
+        if ($racks->count() !== $rackIds->count() || $racks->contains(
+            fn ($rack) => (int) $rack->gudang_id !== $gudangId || $rack->status !== 'AKTIF'
+        )) {
+            throw ValidationException::withMessages([
+                'lokasi_gudang_id' => 'Alokasi rak tidak valid. Setiap rak harus aktif dan berada di gudang penerima yang sama.',
+            ]);
+        }
     }
 }
