@@ -19,21 +19,30 @@ class PengadaanKatalogApiController extends ApiController
      */
     public function katalogBarang(Request $request): JsonResponse
     {
-        $cari = $request->query('cari');
-        $tipe = $request->query('tipe');
+        $validated = $request->validate([
+            'cari' => 'nullable|string|max:255',
+            'tipe' => 'nullable|in:HABIS_PAKAI,ASET,SPAREPART',
+            'page' => 'sometimes|integer|min:1',
+            'per_halaman' => 'sometimes|integer|min:1|max:100',
+        ]);
+        $cari = trim($validated['cari'] ?? '');
+        $tipe = $validated['tipe'] ?? null;
 
-        $barang = Barang::query()
+        $paginated = Barang::query()
             ->where('status', 'AKTIF')
             ->with(['kategori:id,nama', 'satuan:id,nama', 'merek:id,nama'])
             ->when($tipe, fn ($q) => $q->where('tipe', $tipe))
-            ->when($cari, function ($q) use ($cari) {
+            ->when($cari !== '', function ($q) use ($cari) {
                 $q->where(function ($sub) use ($cari) {
-                    $sub->where('nama', 'like', "%{$cari}%")
-                        ->orWhere('kode', 'like', "%{$cari}%");
+                    $sub->where('nama', 'ilike', "%{$cari}%")
+                        ->orWhere('kode', 'ilike', "%{$cari}%");
                 });
             })
-            ->limit(50)
-            ->get()
+            ->orderBy('nama')
+            ->orderBy('id')
+            ->paginate((int) ($validated['per_halaman'] ?? 50), ['*'], 'page', (int) ($validated['page'] ?? 1));
+
+        $barang = $paginated->getCollection()
             ->map(function ($b) {
                 $tipe = $b->tipe ?? 'HABIS_PAKAI';
                 $tipeLabel = match ($tipe) {
@@ -61,6 +70,14 @@ class PengadaanKatalogApiController extends ApiController
                 ];
             });
 
-        return $this->jsonSuccess($barang, 'Katalog barang berhasil diambil.');
+        return $this->jsonSuccess([
+            'items' => $barang,
+            'paginasi' => [
+                'total' => $paginated->total(),
+                'per_halaman' => $paginated->perPage(),
+                'halaman_ini' => $paginated->currentPage(),
+                'total_halaman' => $paginated->lastPage(),
+            ],
+        ], 'Katalog barang berhasil diambil.');
     }
 }
