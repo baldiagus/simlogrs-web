@@ -41,8 +41,7 @@ class MasterApiController extends ApiController
             ->when($cari, function ($q) use ($cari) {
                 $q->where(function ($sub) use ($cari) {
                     $sub->where('nama', 'ilike', "%{$cari}%")
-                        ->orWhere('kode', 'ilike', "%{$cari}%")
-                        ->orWhere('spesifikasi', 'ilike', "%{$cari}%");
+                        ->orWhere('kode', 'ilike', "%{$cari}%");
                 });
             });
 

@@ -60,6 +60,28 @@ docker compose exec app npm install && docker compose exec app npm run build
 
 Semua perintah `artisan`, `composer`, dan `npm` dijalankan di dalam container (`docker compose exec app ...`).
 
+### HTTPS melalui ngrok
+
+Ngrok di host meneruskan HTTPS publik ke HTTP Nginx. `docker/nginx/default.conf`
+hanya menerima `X-Forwarded-Proto: http/https` dari alamat proxy eksplisit pada blok
+`geo $simlog_trusted_proxy`; selain itu memakai skema koneksi Nginx. IP klien tetap
+diambil dari `$remote_addr`, bukan header `X-Forwarded-For` dari klien.
+
+Gateway Docker saat konfigurasi ini dibuat adalah `172.22.0.1`. Jika berubah,
+periksa dengan `docker inspect simrslogv2-web --format '{{json .NetworkSettings.Networks}}'`
+dan sesuaikan satu alamat gateway di blok `geo`, bukan seluruh subnet.
+Alamat gateway mewakili koneksi dari host (bukan identitas ngrok secara eksklusif);
+hanya gunakan jika host dipercaya. Batasi akses port Nginx pada jaringan yang sesuai.
+Proxy lain harus didaftarkan dengan alamat peer yang benar dan menimpa header protokol
+dari klien. Jangan mengaktifkan `real_ip_header X-Forwarded-For` untuk solusi ini.
+
+Setelah mengubah konfigurasi:
+
+```bash
+docker compose exec web nginx -t && docker compose exec web nginx -s reload
+python tests/Infrastructure/nginx_proxy_check.py
+```
+
 ## Akun Seeder
 
 Kata sandi seluruh akun seeder: nilai `SEEDER_DEFAULT_PASSWORD` di `.env`, bila kosong memakai `SimlogRS@2026!` (`config/simlog.php`). **Ganti sebelum produksi.**
@@ -154,6 +176,14 @@ docker compose exec -T app php artisan test --compact
 # atau sebagian:
 docker compose exec -T app php artisan test --compact tests/Feature/Persediaan
 ```
+
+Regresi pencarian katalog mobile (`cari`, nama/kode, filter tipe, hasil kosong), dijalankan pada database terisolasi `simlog_rs_test`:
+
+```bash
+docker compose exec -T app sh .phptest.sh php artisan test --compact tests/Feature/Master/MasterBarangSearchApiTest.php
+```
+
+Endpoint `/api/v1/master/barang-lengkap` mencari pada kolom `nama` dan `kode`; `spesifikasi` bukan kolom tabel `barang`.
 
 Hasil terakhir (22 Oktober 2026): **539 lulus, 0 gagal** (3788 assertion).
 
